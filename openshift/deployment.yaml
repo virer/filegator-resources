@@ -1,0 +1,98 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: filegator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: filegator
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: filegator
+    spec:
+      volumes:
+        - name: app
+          emptyDir: {}
+        - name: init
+          configMap:
+            name: filegator-init
+            defaultMode: 420
+        - name: configuration-php
+          configMap:
+            name: filegator-cfg
+            defaultMode: 420
+      initContainers:
+        - resources: {}
+          terminationMessagePath: /dev/termination-log
+          name: init
+          command:
+            - sh
+          imagePullPolicy: Always
+          volumeMounts:
+            - name: app
+              mountPath: /data
+            - name: configuration-php
+              mountPath: /config
+            - name: init
+              mountPath: /init
+          terminationMessagePolicy: File
+          image: docker.io/filegator/filegator
+          args:
+            - /init/init.sh
+      containers:
+        - resources:
+            requests:
+              cpu: 50m
+              memory: 64m
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 3
+            timeoutSeconds: 1
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          terminationMessagePath: /dev/termination-log
+          name: container
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 3
+            timeoutSeconds: 1
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          env:
+            - name: https_proxy
+              value: 'http://internal-proxy.tld:8080'
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: app
+              mountPath: /var/www/filegator
+          terminationMessagePolicy: File
+          image: docker.io/filegator/filegator
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      securityContext:
+        supplementalGroups:
+          - 33
+      schedulerName: default-scheduler
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600
+
